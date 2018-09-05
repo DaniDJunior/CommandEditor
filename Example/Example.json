@@ -1,0 +1,23 @@
+{
+    "pathIn": ".........ProjectPath.........\\Example\\In",
+    "pathOut": ".........ProjectPath.........\\Example\\Out",
+    "data": {
+        "file": [{
+                "nome": "teste1",
+                "nomeId": "id",
+                "tipoId": "uniqueidentifier",
+                "campos": { "nome": "NomeStatus", "tipo": "[nvarchar](30)" }
+            },
+            {
+                "nome": "teste2",
+                "nomeId": "id",
+                "tipoId": "uniqueidentifier",
+                "campos": [
+                    { "nome": "NomeStatus", "tipo": "[nvarchar](30)" },
+                    { "nome": "NomeStatus", "tipo": "[nvarchar](30)" },
+                    { "nome": "NomeStatus", "tipo": "[nvarchar](30)" }
+                ]
+            }
+        ]
+    }
+}
