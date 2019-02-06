@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Web.Script.Serialization;
 
@@ -100,6 +101,7 @@ namespace CommandEditor
             public string originalFileName { get; set; }
             public string fileName { get; set; }
             public string body { get; set; }
+            public List<string> keys { get; set; }
         }
 
         private static void GetFileList(dynamic dados, List<string> listFile, string key)
@@ -128,6 +130,21 @@ namespace CommandEditor
             }
         }
 
+        public static List<string> GetKeys(string texto)
+        {
+            var regex = new Regex(@"{{([a-zA-Z0-9!:@#$&()\[\]\\-`.+,/\""]+)}}");
+            List<string> chaves = new List<string>();
+            foreach (Match i in regex.Matches(texto))
+            {
+                string chave = i.Value.Substring(0, i.Value.Length - 2).Substring(2);
+                if (!chaves.Contains(chave))
+                {
+                    chaves.Add(chave);
+                }
+            }
+            return chaves;
+        }
+
         private static void GetFiles(dynamic dados, List<string> listFile, string key)
         {
             List<fileChange> filesChange = new List<fileChange>();
@@ -139,46 +156,49 @@ namespace CommandEditor
                 FileInfo fileInfo = new FileInfo(fileName);
                 Directory.CreateDirectory(fileInfo.DirectoryName);
                 fileName = fileInfo.FullName.Replace(fileInfo.Extension, string.Empty);
-
-                filesChange.Add(new fileChange { originalFileName = file, fileName = fileName, body = s.ReadToEnd() });
-
+                fileChange fileChange = new fileChange { originalFileName = file, fileName = fileName, body = s.ReadToEnd() };
+                fileChange.keys = GetKeys(fileChange.body + fileChange.fileName);
+                filesChange.Add(fileChange);
                 s.Close();
             }
 
-            foreach (KeyValuePair<string, object> entry in dados)
+            foreach (fileChange file in filesChange)
             {
-                if (entry.Value != null)
+                foreach (string Key in file.keys)
                 {
-                    switch (entry.Value.GetType().FullName)
+                    string realKey = Key;
+                    string partKey = Key;
+                    string KeyExtetion = Key;
+                    if(partKey.Contains(":"))
+                    {
+                        string[] listKeys = partKey.Split(':');
+                        partKey = listKeys[0];
+                        KeyExtetion = listKeys[0] + "." + listKeys[1];
+                    }
+
+
+
+                    object entry = ((Dictionary<string, object>)dados)[partKey];
+                    switch (entry.GetType().FullName)
                     {
                         case "System.String":
                         case "System.Boolean":
                         case "System.Int32":
                         case "System.Decimal":
-                            foreach (fileChange file in filesChange)
-                            {
-                                file.fileName = file.fileName.Replace("{{" + entry.Key + "}}", entry.Value.ToString());
-                                file.body = file.body.Replace("{{" + entry.Key + "}}", entry.Value.ToString());
-
-                            }
+                                file.fileName = file.fileName.Replace("{{" + realKey + "}}", entry.ToString());
+                                file.body = file.body.Replace("{{" + realKey + "}}", entry.ToString());
                             break;
                         case "System.Object[]":
-                            foreach (fileChange file in filesChange)
-                            {
-                                file.body = file.body.Replace("{{" + entry.Key + "}}", GetValList(entry.Value, entry.Key, file.originalFileName));
-                            }
+                                file.body = file.body.Replace("{{" + realKey + "}}", GetValList(entry, KeyExtetion, file.originalFileName));
                             break;
                         default:
-                            if (entry.Value.GetType().FullName.Contains("System.Collections.Generic.Dictionary"))
+                            if (entry.GetType().FullName.Contains("System.Collections.Generic.Dictionary"))
                             {
-                                foreach (fileChange file in filesChange)
-                                {
-                                    file.body = file.body.Replace("{{" + entry.Key + "}}", GetValRetroative(entry.Value, entry.Key, file.originalFileName));
-                                }
+                                    file.body = file.body.Replace("{{" + realKey + "}}", GetValRetroative(entry, KeyExtetion, file.originalFileName));
                             }
                             else
                             {
-                                throw new Exception("Objeto não reconhecido pelo sistema: " + entry.Value.GetType().FullName);
+                                throw new Exception("Objeto não reconhecido pelo sistema: " + entry.GetType().FullName);
                             }
                             break;
                     }
