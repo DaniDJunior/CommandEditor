@@ -15,14 +15,9 @@ namespace CommandEditor
         private static string pathOut = string.Empty;
         private static object Data = null;
 
-        public static void GenerateFiles(string jsonFile)
+        public static void GenerateFiles(string json)
         {
-            StreamReader fileJson = new StreamReader(jsonFile);
-
             JavaScriptSerializer serializer = new JavaScriptSerializer();
-            string json = fileJson.ReadToEnd();
-            fileJson.Close();
-
             foreach (KeyValuePair<string, object> entry in (dynamic)serializer.DeserializeObject(json))
             {
                 if (entry.Key == "pathIn")
@@ -176,31 +171,37 @@ namespace CommandEditor
                         KeyExtetion = listKeys[0] + "." + listKeys[1];
                     }
 
-
-
-                    object entry = ((Dictionary<string, object>)dados)[partKey];
-                    switch (entry.GetType().FullName)
-                    {
-                        case "System.String":
-                        case "System.Boolean":
-                        case "System.Int32":
-                        case "System.Decimal":
+                    if(((Dictionary<string, object>)dados).Keys.Contains(partKey))
+                    { 
+                        object entry = ((Dictionary<string, object>)dados)[partKey];
+                        switch (entry.GetType().FullName)
+                        {
+                            case "System.String":
+                            case "System.Boolean":
+                            case "System.Int32":
+                            case "System.Decimal":
                                 file.fileName = file.fileName.Replace("{{" + realKey + "}}", entry.ToString());
                                 file.body = file.body.Replace("{{" + realKey + "}}", entry.ToString());
-                            break;
-                        case "System.Object[]":
+                                break;
+                            case "System.Object[]":
                                 file.body = file.body.Replace("{{" + realKey + "}}", GetValList(entry, KeyExtetion, file.originalFileName));
-                            break;
-                        default:
-                            if (entry.GetType().FullName.Contains("System.Collections.Generic.Dictionary"))
-                            {
+                                break;
+                            default:
+                                if (entry.GetType().FullName.Contains("System.Collections.Generic.Dictionary"))
+                                {
                                     file.body = file.body.Replace("{{" + realKey + "}}", GetValRetroative(entry, KeyExtetion, file.originalFileName));
-                            }
-                            else
-                            {
-                                throw new Exception("Objeto não reconhecido pelo sistema: " + entry.GetType().FullName);
-                            }
-                            break;
+                                }
+                                else
+                                {
+                                    throw new Exception("Objeto não reconhecido pelo sistema: " + entry.GetType().FullName);
+                                }
+                                break;
+                        }
+                    }
+                    else
+                    {
+                        file.fileName = file.fileName.Replace("{{" + realKey + "}}", string.Empty);
+                        file.body = file.body.Replace("{{" + realKey + "}}", string.Empty);
                     }
                 }
             }
@@ -257,32 +258,49 @@ namespace CommandEditor
                 string _return = r.ReadToEnd();
                 r.Close();
 
-                foreach (KeyValuePair<string, object> entry in data)
+                List<string> keys = GetKeys(_return);
+
+                foreach (string Key in keys)
                 {
-                    if (entry.Value != null)
+                    string realKey = Key;
+                    string partKey = Key;
+                    string KeyExtetion = Key;
+                    if (partKey.Contains(":"))
                     {
-                        switch (entry.Value.GetType().FullName)
+                        string[] listKeys = partKey.Split(':');
+                        partKey = listKeys[0];
+                        KeyExtetion = listKeys[0] + "." + listKeys[1];
+                    }
+
+                    if (((Dictionary<string, object>)data).Keys.Contains(partKey))
+                    {
+                        object entry = ((Dictionary<string, object>)data)[partKey];
+                        switch (entry.GetType().FullName)
                         {
                             case "System.String":
                             case "System.Boolean":
                             case "System.Int32":
                             case "System.Decimal":
-                                _return = _return.Replace("{{" + entry.Key + "}}", entry.Value.ToString());
+                                _return = _return.Replace("{{" + realKey + "}}", entry.ToString());
                                 break;
                             case "System.Object[]":
-                                _return += GetValList(entry.Value, entry.Key, file + "." + key);
+                                _return += GetValList(entry, KeyExtetion, file + "." + key);
                                 break;
                             default:
-                                if (entry.Value.GetType().FullName.Contains("System.Collections.Generic.Dictionary"))
+                                if (entry.GetType().FullName.Contains("System.Collections.Generic.Dictionary"))
                                 {
-                                    _return = _return.Replace("{{" + entry.Key + "}}", GetValRetroative(entry.Value, entry.Key, file + "." + key));
+                                    _return = _return.Replace("{{" + realKey + "}}", GetValRetroative(entry, KeyExtetion, file + "." + key));
                                 }
                                 else
                                 {
-                                    throw new Exception("Objeto não reconhecido pelo sistema: " + entry.Value.GetType().FullName);
+                                    throw new Exception("Objeto não reconhecido pelo sistema: " + entry.GetType().FullName);
                                 }
                                 break;
                         }
+                    }
+                    else
+                    {
+                        _return = _return.Replace("{{" + realKey + "}}", string.Empty);
                     }
                 }
                 return _return;

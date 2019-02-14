@@ -1,5 +1,6 @@
 ﻿using System.Collections.Generic;
 using System.IO;
+using System.Web.Script.Serialization;
 
 namespace CommandEditor
 {
@@ -15,7 +16,11 @@ namespace CommandEditor
                 if (File.Exists(arg))
                 {
                     FileInfo file = new FileInfo(arg);
-                    GenerateCommandFile.GenerateFiles(file.FullName);
+                    StreamReader fileJson = new StreamReader(file.FullName);
+
+                    string json = fileJson.ReadToEnd();
+                    fileJson.Close();
+                    GenerateCommandFile.GenerateFiles(json);
                 }
             }
         }
