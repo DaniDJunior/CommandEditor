@@ -96,6 +96,8 @@ namespace CommandEditor
             public string originalFileName { get; set; }
             public string fileName { get; set; }
             public string body { get; set; }
+            public string bodyOut { get; set; }
+            public Dictionary<string, string> bodys { get; set; }
             public List<string> keys { get; set; }
         }
 
@@ -149,53 +151,68 @@ namespace CommandEditor
                 StreamReader s = new StreamReader(file);
                 string fileName = pathOut + file.Replace(pathIn, string.Empty);
                 FileInfo fileInfo = new FileInfo(fileName);
-                Directory.CreateDirectory(fileInfo.DirectoryName);
                 fileName = fileInfo.FullName.Replace(fileInfo.Extension, string.Empty);
                 fileChange fileChange = new fileChange { originalFileName = file, fileName = fileName, body = s.ReadToEnd() };
                 fileChange.keys = GetKeys(fileChange.body + fileChange.fileName);
+                fileChange.bodys = new Dictionary<string,string>();
+                fileChange.bodyOut = string.Empty;
                 filesChange.Add(fileChange);
                 s.Close();
             }
 
             foreach (fileChange file in filesChange)
             {
+                bool flagUpdate = false;
                 foreach (string Key in file.keys)
                 {
                     string realKey = Key;
                     string partKey = Key;
                     string KeyExtetion = Key;
-                    if(partKey.Contains(":"))
+                    if (partKey.Contains(":"))
                     {
                         string[] listKeys = partKey.Split(':');
                         partKey = listKeys[0];
-                        KeyExtetion = listKeys[0] + "." + listKeys[1];
-                    }
-
-                    if(((Dictionary<string, object>)dados).Keys.Contains(partKey))
-                    { 
-                        object entry = ((Dictionary<string, object>)dados)[partKey];
-                        switch (entry.GetType().FullName)
+                        if (listKeys[1] == "Update")
                         {
-                            case "System.String":
-                            case "System.Boolean":
-                            case "System.Int32":
-                            case "System.Decimal":
-                                file.fileName = file.fileName.Replace("{{" + realKey + "}}", entry.ToString());
-                                file.body = file.body.Replace("{{" + realKey + "}}", entry.ToString());
-                                break;
-                            case "System.Object[]":
-                                file.body = file.body.Replace("{{" + realKey + "}}", GetValList(entry, KeyExtetion, file.originalFileName));
-                                break;
-                            default:
-                                if (entry.GetType().FullName.Contains("System.Collections.Generic.Dictionary"))
-                                {
-                                    file.body = file.body.Replace("{{" + realKey + "}}", GetValRetroative(entry, KeyExtetion, file.originalFileName));
-                                }
-                                else
-                                {
-                                    throw new Exception("Objeto não reconhecido pelo sistema: " + entry.GetType().FullName);
-                                }
-                                break;
+                            flagUpdate = true;
+                        }
+                        else
+                        {
+                            KeyExtetion = listKeys[0] + "." + listKeys[1];
+                        }
+                    }
+                    if (!string.IsNullOrEmpty(partKey) && (((Dictionary<string, object>)dados).Keys.Contains(partKey)))
+                    {
+                        if (flagUpdate)
+                        {
+                            file.bodys.Add(partKey, GetValRetroative(dados, KeyExtetion, file.originalFileName));
+                        }
+                        else
+                        {
+                            object entry = ((Dictionary<string, object>)dados)[partKey];
+                            switch (entry.GetType().FullName)
+                            {
+                                case "System.String":
+                                case "System.Boolean":
+                                case "System.Int32":
+                                case "System.Decimal":
+                                    file.fileName = file.fileName.Replace("{{" + realKey + "}}", entry.ToString());
+                                    file.body = file.body.Replace("{{" + realKey + "}}", entry.ToString());
+                                    break;
+                                case "System.Object[]":
+                                    file.body = file.body.Replace("{{" + realKey + "}}", GetValList(entry, KeyExtetion, file.originalFileName));
+                                    break;
+                                default:
+                                    if (entry.GetType().FullName.Contains("System.Collections.Generic.Dictionary"))
+                                    {
+                                        file.body = file.body.Replace("{{" + realKey + "}}", GetValRetroative(entry, KeyExtetion, file.originalFileName));
+                                    }
+                                    else
+                                    {
+                                        throw new Exception("Objeto não reconhecido pelo sistema: " + entry.GetType().FullName);
+                                    }
+                                    break;
+                            }
                         }
                     }
                     else
@@ -208,37 +225,181 @@ namespace CommandEditor
 
             foreach (fileChange file in filesChange)
             {
+                FileInfo fileInfo = new FileInfo(file.fileName);
+                Directory.CreateDirectory(fileInfo.DirectoryName);
                 if (File.Exists(file.fileName))
                 {
-                    List<string> linhas = new List<string>();
+                    Dictionary<string, string> LinhasInserir = new Dictionary<string, string>();
+                    Dictionary<string, DadosUpdate> LinhasAtualizar = new Dictionary<string, DadosUpdate>();
                     StreamReader reader = new StreamReader(file.fileName);
+                    string allfileRead = reader.ReadToEnd();
+                    reader.Close();
+
+                    List<string> Keys = GetKeys(allfileRead);
+
+                    reader = new StreamReader(file.fileName);
                     string line = string.Empty;
+                    bool flagNoUpdate = false;
                     while ((line = reader.ReadLine()) != null)
                     {
-                        if (line.Contains("{{" + key + "}}"))
+                        foreach(string k in Keys)
                         {
-                            linhas.Add(line);
+                            if (line.Contains(k))
+                            {
+                                if(k.Contains(":"))
+                                {
+                                    string[] kParts = k.Split(':');
+                                    switch (kParts[kParts.Length - 1])
+                                    {
+                                        case "NoUpdate":
+                                            flagNoUpdate = true;
+                                            break;
+                                        case "Insert":
+                                            if (kParts[0].Contains("."))
+                                            {
+                                                string[] kParts2 = kParts[0].Split('.');
+                                                if (LinhasInserir.ContainsKey(kParts2[kParts2.Length - 1]))
+                                                {
+                                                    LinhasInserir[kParts2[kParts2.Length - 1]] = line;
+                                                }
+                                                else
+                                                {
+                                                    LinhasInserir.Add(kParts[kParts2.Length - 1], line);
+                                                }
+                                            }
+                                            else
+                                            {
+                                                if (LinhasInserir.ContainsKey("Default" + kParts[0]))
+                                                {
+                                                    LinhasInserir["Default" + kParts[0]] = line;
+                                                }
+                                                else
+                                                {
+                                                    LinhasInserir.Add("Default" + kParts[0], line);
+                                                }
+                                            }
+                                            break;
+                                        case "StartUpdate":
+                                            if (kParts[0].Contains("."))
+                                            {
+                                                string[] kParts2 = kParts[0].Split('.');
+                                                if (LinhasInserir.ContainsKey(kParts2[kParts2.Length - 1]))
+                                                {
+                                                    LinhasAtualizar[kParts2[kParts2.Length - 1]] = new DadosUpdate { inicio = line, fim = null };
+                                                }
+                                                else
+                                                {
+                                                    LinhasAtualizar.Add(kParts[kParts2.Length - 1], new DadosUpdate { inicio = line, fim = null });
+                                                }
+                                            }
+                                            else
+                                            {
+                                                if (LinhasInserir.ContainsKey("Default" + kParts[0]))
+                                                {
+                                                    LinhasAtualizar["Default" + kParts[0]] = new DadosUpdate { inicio = line, fim = null };
+                                                }
+                                                else
+                                                {
+                                                    LinhasAtualizar.Add("Default" + kParts[0], new DadosUpdate { inicio = line, fim = null });
+                                                }
+                                            }
+                                            break;
+                                        case "EndUpdate":
+                                            if (kParts[0].Contains("."))
+                                            {
+                                                string[] kParts2 = kParts[0].Split('.');
+
+                                                LinhasAtualizar[kParts2[kParts2.Length - 1]].fim = line;
+                                            }
+                                            else
+                                            {
+                                                LinhasAtualizar["Default" + kParts[0]].fim = line;
+                                            }
+                                            break;
+                                    }
+                                }
+                                else
+                                {
+                                    if (k.Contains("."))
+                                    {
+                                        string[] kParts = k.Split('.');
+                                        if (LinhasInserir.ContainsKey(kParts[kParts.Length-1]))
+                                        {
+                                            LinhasInserir[kParts[kParts.Length - 1]] = line;
+                                        }
+                                        else
+                                        {
+                                            LinhasInserir.Add(kParts[kParts.Length - 1], line);
+                                        }
+                                    }
+                                    else
+                                    {
+                                        if(LinhasInserir.ContainsKey("Default" + k))
+                                        {
+                                            LinhasInserir["Default" + k] = line;
+                                        }
+                                        else
+                                        {
+                                            LinhasInserir.Add("Default" + k, line);
+                                        }
+                                    }
+                                }
+                            }
                         }
+                        
                     }
                     reader.Close();
-                    if (linhas.Count > 0)
+                    if (!flagNoUpdate)
                     {
-                        reader = new StreamReader(file.fileName);
-                        string allfile = reader.ReadToEnd();
-                        reader.Close();
-                        foreach (string i in linhas)
+                        if (LinhasInserir.Count > 0)
                         {
-                            allfile = allfile.Replace(i, i + "\r\n" + file.body);
+                            reader = new StreamReader(file.fileName);
+                            string allfile = reader.ReadToEnd();
+                            reader.Close();
+                            foreach (KeyValuePair<string,string> i in LinhasInserir)
+                            {
+                                if ((i.Key == "Default") || (!file.bodys.ContainsKey(i.Key)))
+                                {
+                                    allfile = allfile.Replace(i.Value, i.Value + "\r\n" + file.body);
+                                }
+                                else
+                                {
+                                    allfile = allfile.Replace(i.Value, i.Value + "\r\n" + file.bodys[i.Key]);
+                                }
+                                
+                            }
+                            StreamWriter w = new StreamWriter(file.fileName, false);
+                            w.Write(allfile);
+                            w.Close();
                         }
-                        StreamWriter w = new StreamWriter(file.fileName, false);
-                        w.Write(allfile);
-                        w.Close();
-                    }
-                    else
-                    {
-                        StreamWriter w = new StreamWriter(file.fileName, true);
-                        w.Write(file.body);
-                        w.Close();
+                        if(LinhasAtualizar.Count > 0)
+                        {
+                            reader = new StreamReader(file.fileName);
+                            string allfile = reader.ReadToEnd();
+                            reader.Close();
+                            foreach (KeyValuePair<string,DadosUpdate> i in LinhasAtualizar)
+                            {
+                                int pFrom = allfile.IndexOf(i.Value.inicio);
+                                int pTo = allfile.LastIndexOf(i.Value.fim) + i.Value.fim.Length;
+                                if ((i.Key.Contains("Default")) || (!file.bodys.ContainsKey(i.Key)))
+                                {
+                                    allfile = allfile.Replace(allfile.Substring(pFrom, pTo - pFrom), i.Value.inicio + "\r\n" + file.body + "\r\n" + i.Value.fim);
+                                }
+                                else
+                                {
+                                    allfile = allfile.Replace(allfile.Substring(pFrom, pTo - pFrom), i.Value.inicio + "\r\n" + file.bodys[i.Key] + "\r\n" + i.Value.fim);
+                                }
+                            }
+                            StreamWriter w = new StreamWriter(file.fileName, false);
+                            w.Write(allfile);
+                            w.Close();
+                        }
+                        if ((LinhasInserir.Count == 0) && (LinhasAtualizar.Count == 0))
+                        {
+                            StreamWriter w = new StreamWriter(file.fileName, false);
+                            w.Write(file.body);
+                            w.Close();
+                        }
                     }
                 }
                 else
@@ -336,4 +497,11 @@ namespace CommandEditor
             return _return;
         }
     }
+
+    public class DadosUpdate
+    {
+        public string inicio { get; set; }
+        public string fim { get; set; }
+    }
+
 }
