@@ -1,4 +1,6 @@
-﻿using System;
+﻿using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -13,29 +15,37 @@ namespace CommandEditor
     {
         private static string pathIn = string.Empty;
         private static string pathOut = string.Empty;
-        private static object Data = null;
 
         public static void GenerateFiles(string json)
         {
             JavaScriptSerializer serializer = new JavaScriptSerializer();
-            foreach (KeyValuePair<string, object> entry in (dynamic)serializer.DeserializeObject(json))
+
+            JObject Dados = (JObject)JsonConvert.DeserializeObject(json);
+            pathIn = Dados.SelectToken("pathIn").Value<string>();
+
+            pathOut = Dados.SelectToken("pathOut").Value<string>();
+            if (!string.IsNullOrEmpty(pathIn) && !string.IsNullOrEmpty(pathOut))
             {
-                if (entry.Key == "pathIn")
+                JToken next = Dados.SelectToken("data").First();
+                while (next != null)
                 {
-                    pathIn = entry.Value.ToString();
+                    var valor = next.First();
+                    string key = next.Path.Replace("data.", string.Empty);
+                    List<string> files = GetDirectory(pathIn, key);
+                    if (valor.GetType().Name == "JObject")
+                    {
+                        GetFiles(valor.ToString(), files, key);
+                    }
+                    if (valor.GetType().Name == "JArray")
+                    {
+                        foreach (JToken JSonData in valor)
+                        {
+                            GetFiles(JSonData.ToString(), files, key);
+                        }
+                    }
+                    next = next.Next;
+
                 }
-                if (entry.Key == "pathOut")
-                {
-                    pathOut = entry.Value.ToString();
-                }
-                if (entry.Key == "data")
-                {
-                    Data = entry.Value;
-                }
-            }
-            if (!string.IsNullOrEmpty(pathIn) && !string.IsNullOrEmpty(pathOut) && (Data != null))
-            {
-                OpenData(Data);
             }
             else
             {
@@ -58,70 +68,11 @@ namespace CommandEditor
             return temp;
         }
 
-        private static void OpenData(dynamic dados)
-        {
-            foreach (KeyValuePair<string, object> entry in dados)
-            {
-                if (entry.Value != null)
-                {
-                    List<string> files = GetDirectory(pathIn, entry.Key);
-
-                    switch (entry.Value.GetType().FullName)
-                    {
-                        case "System.String":
-                        case "System.Boolean":
-                        case "System.Int32":
-                        case "System.Decimal":
-                            throw new Exception("Json em formato invalido");
-                        case "System.Object[]":
-                            GetFileList(entry.Value, files, entry.Key);
-                            break;
-                        default:
-                            if (entry.Value.GetType().FullName.Contains("System.Collections.Generic.Dictionary"))
-                            {
-                                GetFiles(entry.Value, files, entry.Key);
-                            }
-                            else
-                            {
-                                throw new Exception("Objeto não reconhecido pelo sistema: " + entry.Value.GetType().FullName);
-                            }
-                            break;
-                    }
-                }
-            }
-        }
-
         private class fileChange
         {
             public string originalFileName { get; set; }
             public string fileName { get; set; }
             public string body { get; set; }
-        }
-
-        private static void GetFileList(dynamic dados, List<string> listFile, string key)
-        {
-            foreach (object list in dados)
-            {
-                switch (list.GetType().FullName)
-                {
-                    case "System.String":
-                    case "System.Boolean":
-                    case "System.Int32":
-                    case "System.Decimal":
-                    case "System.Object[]":
-                        throw new Exception("Json no formato errado");
-                    default:
-                        if (list.GetType().FullName.Contains("System.Collections.Generic.Dictionary"))
-                        {
-                            GetFiles(list, listFile, key);
-                        }
-                        else
-                        {
-                            throw new Exception("Objeto não reconhecido pelo sistema: " + list.GetType().FullName);
-                        }
-                        break;
-                }
-            }
         }
 
         private static void GetFiles(string json, List<string> listFile, string key)
@@ -155,8 +106,11 @@ namespace CommandEditor
                             string lineStart = DuplaChave.Custon.StringCuston.getLine(body, "{{" + key + ":StartUpdate}}");
                             string lineEnd = DuplaChave.Custon.StringCuston.getLine(body, "{{" + key + ":EndUpdate}}");
 
-                            string block = DuplaChave.Custon.StringCuston.getBetween(body, lineStart, lineEnd);
-                            body = body.Replace(block, lineStart + "\r\n" + DuplaChave.Custon.Keys.ReplaceKeys(file.body, json) + "\r\n" + lineEnd);
+                            foreach (var block in DuplaChave.Custon.StringCuston.getBetween(body, lineStart, lineEnd))
+                            {
+                                body = body.Replace(block, lineStart + "\r\n" + DuplaChave.Custon.Keys.ReplaceKeys(file.body, json) + "\r\n" + lineEnd);
+                            }
+                            
                         }
                         else if (body.Contains("{{" + key + ":Insert}}"))
                         {
@@ -172,6 +126,11 @@ namespace CommandEditor
                 else
                 {
                     body = DuplaChave.Custon.Keys.ReplaceKeys(file.body, json);
+                }
+                FileInfo info = new FileInfo(file.fileName);
+                if(!Directory.Exists(info.DirectoryName))
+                {
+                    Directory.CreateDirectory(info.DirectoryName);
                 }
                 StreamWriter w = new StreamWriter(file.fileName, false);
                 w.Write(body);

@@ -8,8 +8,8 @@ namespace CommandEditor
     {
         static void Main(string[] args)
         {
-            //List<string> Arg = new List<string>() { @"C:\Users\Animatech\Documents\Projetos\Teste\Teste.json" };
-            //args = Arg.ToArray();
+            List<string> Arg = new List<string>() { @"D:\Dados\teste.json" };
+            args = Arg.ToArray();
 
             foreach(string arg in args)
             {
